@@ -10,10 +10,10 @@ import logging
 from .config import Config
 from .parsed_data import Host, Port, Vulnerability
 
-logging.basicConfig(stream=sys.stderr, level=logging.DEBUG,
-                     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
-#logging.basicConfig(stream=sys.stderr, level=logging.ERROR,
-#                    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+#logging.basicConfig(stream=sys.stderr, level=logging.DEBUG,
+#                     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+logging.basicConfig(stream=sys.stderr, level=logging.ERROR,
+                    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 
 __all__ = ["openvas_parser"]
 

@@ -13,8 +13,10 @@ from .parsed_data import Vulnerability
 # DEBUG
 import sys
 import logging
-logging.basicConfig(stream=sys.stderr, level=logging.DEBUG,
-                     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+#logging.basicConfig(stream=sys.stderr, level=logging.DEBUG,
+#                    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+logging.basicConfig(stream=sys.stderr, level=logging.ERROR,
+                    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 
 
 def exporters():
@@ -391,13 +393,18 @@ def export_to_word(vuln_info, template, output_file='openvas_report.docx'):
     import numpy as np
     import tempfile
     import os
+    import math
 
     from docx import Document
     from docx.oxml.shared import qn, OxmlElement
     from docx.oxml.ns import nsdecls
     from docx.oxml import parse_xml
-    from docx.shared import Cm
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Cm, Pt, Twips
+    from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
+    from docx.enum.section import WD_ORIENT
+    from docx.enum.style import WD_STYLE_TYPE
+    from docx.enum.table import WD_ALIGN_VERTICAL
+    from docx.shared import RGBColor
 
     if not isinstance(vuln_info, list):
         raise TypeError("Expected list, got '{}' instead".format(type(vuln_info)))
@@ -413,35 +420,167 @@ def export_to_word(vuln_info, template, output_file='openvas_report.docx'):
     if template is not None:
         if not isinstance(template, str):
             raise TypeError("Expected str, got '{}' instead".format(type(template)))
-    else:
-        template = 'openvasreporting/src/openvas-template.docx'
 
     vuln_info, vuln_levels, vuln_host_by_level, vuln_by_family = _get_collections(vuln_info)
 
     # ====================
     # DOCUMENT PROPERTIES
     # ====================
-    document = Document(template)
-    page_width = Cm(16.5)
-
-    doc_prop = document.core_properties
-    doc_prop.title = "OpenVAS Report"
+    # Create new doc
+    if template is None:
+        document = Document()
+        doc_section = document.sections[0]
+        # Set A4 Format
+        doc_section.page_width    = Cm(21.0)
+        doc_section.page_height   = Cm(29.7)
+        # Shrink margins almost to 0
+        doc_section.left_margin   = Cm(1.5)
+        doc_section.right_margin  = doc_section.left_margin
+        doc_section.top_margin    = Cm(1.0)
+        doc_section.bottom_margin = Cm(1.0)
+        # Force portrait
+        doc_section.orientation   = WD_ORIENT.PORTRAIT
+    # use template
+    else:
+        document = Document(template)
+        doc_section = document.sections[0]
+    
+    # Defining styles (if not defined already)
+    # All used style will be custom, and with 'OR-' prefix.
+    # In this way, the template can still define styles.
+    doc_styles = document.styles
+    
+    # Base paragraph
+    if 'OR-base' not in doc_styles:
+        style_pr_base = doc_styles.add_style('OR-base', WD_STYLE_TYPE.PARAGRAPH)
+        style_pr_base.font.name = 'Ubuntu'
+        style_pr_base.font.size = Pt(8)
+        style_pr_base.font.color.rgb                     = RGBColor.from_string('080808')
+        style_pr_base.paragraph_format.left_indent       = Cm(0)
+        style_pr_base.paragraph_format.right_indent      = Cm(0)
+        style_pr_base.paragraph_format.first_line_indent = Cm(0)
+        style_pr_base.paragraph_format.space_before      = Cm(0)
+        style_pr_base.paragraph_format.space_after       = Cm(0)
+        style_pr_base.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
+        style_pr_base.paragraph_format.widow_control     = True
+        style_pr_base.paragraph_format.alignment         = WD_ALIGN_PARAGRAPH.JUSTIFY_LOW
+    # Base Styles modification
+    if 'OR-base_bold' not in doc_styles:
+        style_pr_body = doc_styles.add_style('OR-base_bold', WD_STYLE_TYPE.PARAGRAPH)
+        style_pr_body.base_style = doc_styles['OR-base']
+        style_pr_body.font.bold  = True
+    # Section headers
+    if 'OR-Heading_base' not in doc_styles:
+        style_pr_or_head_base = doc_styles.add_style('OR-Heading_base', WD_STYLE_TYPE.PARAGRAPH)
+        style_pr_or_head_base.base_style                   = doc_styles['OR-base_bold']
+        style_pr_or_head_base.font.color.rgb               = RGBColor.from_string('183868')
+        style_pr_or_head_base.paragraph_format.space_after = Pt(4)
+    # - Titles
+    if 'OR-Title' not in doc_styles:
+        style_pr_or_title = doc_styles.add_style('OR-Title', WD_STYLE_TYPE.PARAGRAPH)
+        style_pr_or_title.base_style                 = doc_styles['OR-Heading_base']
+        style_pr_or_title.font.size                  = Pt(36)
+        style_pr_or_title.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        style_pr_or_head_base.paragraph_format.space_after = Pt(8)
+    # - Headers
+    if 'OR-Heading_1' not in doc_styles:
+        style_pr_or_header = doc_styles.add_style('OR-Heading_1', WD_STYLE_TYPE.PARAGRAPH)
+        style_pr_or_header.base_style = doc_styles['OR-Heading_base']
+        style_pr_or_header.font.size  = Pt(20)
+    if 'OR-Heading_2' not in doc_styles:
+        style_pr_or_header = doc_styles.add_style('OR-Heading_2', WD_STYLE_TYPE.PARAGRAPH)
+        style_pr_or_header.base_style = doc_styles['OR-Heading_base']
+        style_pr_or_header.font.size  = Pt(16)
+    if 'OR-Heading_3' not in doc_styles:
+        style_pr_or_header = doc_styles.add_style('OR-Vuln_title', WD_STYLE_TYPE.PARAGRAPH)
+        style_pr_or_header.base_style     = doc_styles['OR-Heading_base']
+        style_pr_or_header.font.size      = Pt(12)
+    # - Vulnerabilities Titles
+    for name,rgb in Config.colors().items():
+        if 'OR-Vuln_title_'+name not in doc_styles:
+            style_pr_or_header = doc_styles.add_style('OR-Vuln_title_'+name, WD_STYLE_TYPE.PARAGRAPH)
+            style_pr_or_header.base_style     = doc_styles['OR-Vuln_title']
+            style_pr_or_header.font.color.rgb = RGBColor.from_string(rgb[1:])
+    # - Host with vulnerabilities title
+    if 'OR-Vuln_hosts' not in doc_styles:
+        style_pr_or_header = doc_styles.add_style('OR-Vuln_hosts', WD_STYLE_TYPE.PARAGRAPH)
+        style_pr_or_header.base_style     = doc_styles['OR-Heading_base']
+        style_pr_or_header.font.size      = Pt(10)
+    # TOC specific
+    if 'OR-TOC_base' not in doc_styles:
+        style_pr_or_toc_base = doc_styles.add_style('OR-TOC_base', WD_STYLE_TYPE.PARAGRAPH)
+        style_pr_or_toc_base.base_style     = doc_styles['OR-base']
+        style_pr_or_toc_base.font.color.rgb = RGBColor.from_string('183868')
+    if 'OR-TOC_1' not in doc_styles:
+        style_pr_or_toc = doc_styles.add_style('OR-TOC_1', WD_STYLE_TYPE.PARAGRAPH)
+        style_pr_or_toc.base_style = doc_styles['OR-TOC_base']
+        style_pr_or_toc.font.bold  = True
+    if 'OR-TOC_2' not in doc_styles:
+        style_pr_or_toc = doc_styles.add_style('OR-TOC_2', WD_STYLE_TYPE.PARAGRAPH)
+        style_pr_or_toc.base_style = doc_styles['OR-TOC_base']
+    if 'OR-TOC_3' not in doc_styles:
+        style_pr_or_toc = doc_styles.add_style('OR-Toc_3', WD_STYLE_TYPE.PARAGRAPH)
+        style_pr_or_toc.base_style = doc_styles['OR-TOC_base']
+    if 'OR-TOC_4' not in doc_styles:
+        style_pr_or_toc = doc_styles.add_style('OR-TOC_4', WD_STYLE_TYPE.PARAGRAPH)
+        style_pr_or_toc.base_style = doc_styles['OR-TOC_base']
+        style_pr_or_toc.font.italic  = True
+    # Tables style
+    # - Specific paragraph style to allow space before and after
+    if 'OR-cell' not in doc_styles:
+        style_pr_cell = doc_styles.add_style('OR-cell', WD_STYLE_TYPE.PARAGRAPH)
+        style_pr_cell.base_style                    = doc_styles['OR-base']
+        style_pr_cell.paragraph_format.space_before = Pt(1.5)
+        style_pr_cell.paragraph_format.space_after  = Pt(1.5)
+    if 'OR-cell_bold' not in doc_styles:
+        style_pr_cell = doc_styles.add_style('OR-cell_bold', WD_STYLE_TYPE.PARAGRAPH)
+        style_pr_cell.base_style = doc_styles['OR-cell']
+        style_pr_cell.font.bold  = True
+    
+    # Clear all contents
+    document._body.clear_content()
+    
+    # Set doc title
+    doc_prop    = document.core_properties
+    doc_title = 'OpenVAS/GreenBone Report'
+    doc_prop.title = doc_title
     doc_prop.category = "Report"
-
-    document.add_paragraph('OpenVAS Report', style='Title')
+    
+    # Effective writeable width
+    # If margins set are float, try to fix (issue in python-docx: expected an int)
+    # In this case, they _should be_ in twentieths of a point, so
+    # multiply Twips helper
+    try:
+        doc_section.left_margin
+    except ValueError as e:
+        fixed_margin = float(re.search(": '(.+?)'", str(e)).group(1))
+        doc_section.left_margin = Twips(fixed_margin)
+    try:
+        doc_section.right_margin
+    except ValueError as e:
+        fixed_margin = float(re.search(": '(.+?)'", str(e)).group(1))
+        doc_section.right_margin = Twips(fixed_margin)
+    
+    page_width = doc_section.page_width - ( doc_section.left_margin + doc_section.right_margin )
+    
+    ## Start actual document writing ##
+    document.add_paragraph(doc_title, style='OR-Title')
 
     # ====================
     # TABLE OF CONTENTS
     # ====================
-    document.add_paragraph('Table of Contents', style='Heading 1')
-
-    par = document.add_paragraph()
+    # WARNING -Not working with LibreOffice
+    document.add_paragraph('Table of Contents', style='OR-Heading_1')
+    # keep the title as cover of the report
+    document.add_page_break()
+    
+    par = document.add_paragraph(style='OR-base')
     run = par.add_run()
     fld_char = OxmlElement('w:fldChar')  # creates a new element
     fld_char.set(qn('w:fldCharType'), 'begin')  # sets attribute on element
     instr_text = OxmlElement('w:instrText')
     instr_text.set(qn('xml:space'), 'preserve')  # sets attribute on element
-    instr_text.text = r'TOC \h \z \t "OV-H1toc;1;OV-H2toc;2;OV-H3toc;3;OV-Finding;3"'
+    instr_text.text = r'TOC \h \z \t "OR-TOC_1;1;OR-OR-TOC_1;2;OR-TOC_3;3;OR-TOC_4;3"'
 
     fld_char2 = OxmlElement('w:fldChar')
     fld_char2.set(qn('w:fldCharType'), 'separate')
@@ -463,20 +602,20 @@ def export_to_word(vuln_info, template, output_file='openvas_report.docx'):
     # ====================
     # MANAGEMENT SUMMARY
     # ====================
-    document.add_paragraph('Management Summary', style='OV-H1toc')
-    document.add_paragraph('< TYPE YOUR MANAGEMENT SUMMARY HERE >')
+    document.add_paragraph('Management Summary', style='OR-Heading_1')
+    document.add_paragraph('< TYPE YOUR MANAGEMENT SUMMARY HERE >', style='OR-base')
     document.add_page_break()
 
     # ====================
     # TECHNICAL FINDINGS
     # ====================
-    document.add_paragraph('Technical Findings', style='OV-H1toc')
-    document.add_paragraph('The section below discusses the technical findings.')
+    document.add_paragraph('Technical Findings', style='OR-Heading_1')
+    document.add_paragraph('The section below discusses the technical findings.', style='OR-base' )
 
     # --------------------
     # SUMMARY TABLE
     # --------------------
-    document.add_paragraph('Summary', style='OV-H2toc')
+    document.add_paragraph('Summary', style='OR-Heading_2')
 
     colors_sum = []
     labels_sum = []
@@ -484,11 +623,15 @@ def export_to_word(vuln_info, template, output_file='openvas_report.docx'):
     aff_sum = []
 
     table_summary = document.add_table(rows=1, cols=3)
+    
+    # TABLE HEADERS
+    # --------------------
     hdr_cells = table_summary.rows[0].cells
-    hdr_cells[0].paragraphs[0].add_run('Risk level').bold = True
-    hdr_cells[1].paragraphs[0].add_run('Vulns number').bold = True
-    hdr_cells[2].paragraphs[0].add_run('Affected hosts').bold = True
-
+    hdr_cells[0].paragraphs[0].add_run('Risk level')
+    hdr_cells[1].paragraphs[0].add_run('Vulns number')
+    hdr_cells[2].paragraphs[0].add_run('Affected hosts')
+    # FIELDS
+    # --------------------
     # Provide data to table and charts
     for level in Config.levels().values():
         row_cells = table_summary.add_row().cells
@@ -499,72 +642,75 @@ def export_to_word(vuln_info, template, output_file='openvas_report.docx'):
         labels_sum.append(level)
         vuln_sum.append(vuln_levels[level])
         aff_sum.append(vuln_host_by_level[level])
+    
+    # Apply styles
+    # --------------------
+    for h in hdr_cells:
+        h.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+        for p in h.paragraphs:
+            p.style = doc_styles['OR-cell_bold']
+    
+    for r in table_summary.rows[1:]:
+        for c in r.cells:
+            c.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+            for p in c.paragraphs:
+                p.style = doc_styles['OR-cell']
 
     # --------------------
     # CHART
     # --------------------
     fd, path = tempfile.mkstemp(suffix='.png')
-
-    par_chart = document.add_paragraph()
+    chart_dpi    = 144
+    chart_height = Cm(8);
+    par_chart = document.add_paragraph(style='OR-base')
     par_chart.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run_chart = par_chart.add_run()
 
-    plt_width  = 10.0 # cm
-    plt_height = 7.5  # cm
-    plt.figure(figsize=[ plt_width, plt_height ], dpi=300)
+    bar_chart, bar_axis = plt.subplots(dpi=chart_dpi)
+    bar_axis.set_title('Vulnerability summary by risk level', fontsize=10)
 
     pos = np.arange(len(labels_sum))
     width = 0.35
 
+    bar_axis.set_xticks(pos)
+    bar_axis.set_xticklabels(labels_sum)
+    bar_chart.gca().spines['left'].set_visible(False)
+    bar_chart.gca().spines['right'].set_visible(False)
+    bar_chart.gca().spines['top'].set_visible(False)
+    bar_chart.gca().spines['bottom'].set_position('zero')
+    bar_axis.tick_params(top=False, bottom=True, left=False, right=False,
+                    labelleft=False, labelbottom=True)
     bars_vuln = plt.bar(pos - width / 2, vuln_sum, width, align='center', label='Vulnerabilities',
                         color=colors_sum, edgecolor='black')
     bars_aff = plt.bar(pos + width / 2, aff_sum, width, align='center', label='Affected hosts',
                        color=colors_sum, edgecolor='black', hatch='//')
-    plt.title('Vulnerability summary by risk level')
-    plt.subplot().set_xticks(pos)
-    plt.subplot().set_xticklabels(labels_sum)
-    plt.gca().spines['left'].set_visible(False)
-    plt.gca().spines['right'].set_visible(False)
-    plt.gca().spines['top'].set_visible(False)
-    plt.gca().spines['bottom'].set_position('zero')
-    plt.tick_params(top=False, bottom=True, left=False, right=False,
-                    labelleft=False, labelbottom=True)
-    plt.subplots_adjust(left=0.0, right=1.0)
-
-    def __label_bars(barcontainer):
+    for barcontainer in (bars_vuln, bars_aff):
         for bar in barcontainer:
             height = bar.get_height()
-            plt.gca().text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.3, str(int(height)),
+            bar_chart.gca().text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.3, str(int(height)),
                            ha='center', color='black', fontsize=8)
+    bar_chart.legend()
 
-    __label_bars(bars_vuln)
-    __label_bars(bars_aff)
-
-    plt.legend()
-
-    plt.savefig(path)
+    bar_chart.savefig(path)
 
     # plt.show()  # DEBUG
-
-    run_chart.add_picture(path, width=Cm(plt_width), height=Cm(plt_height))
+    
+    bar_height = chart_height
+    run_chart.add_picture(path, height=bar_height)
     os.remove(path)
 
-    plt_width  = 14.0 # cm
-    plt_height = 7.0  # cm
-    plt.figure(figsize=[ plt_width, plt_height ], dpi=300)
-
+    pie_chart, pie_axis = plt.subplots(dpi=chart_dpi, subplot_kw=dict(aspect="equal"))
+    pie_axis.set_title('Vulnerability by family', fontsize=10)
+    
     values = list(vuln_by_family.values())
-    pie, tx, autotexts = plt.pie(values, labels=vuln_by_family.keys(), autopct='')
-    plt.title('Vulnerability by family')
+    pie, tx, autotexts = pie_axis.pie(values, labels=vuln_by_family.keys(), autopct='', textprops=dict(fontsize=8))
     for i, txt in enumerate(autotexts):
         txt.set_text('{}'.format(values[i]))
-    plt.axis('equal')
-
-    plt.savefig(path, bbox_inches='tight')  # bbox_inches fixes labels being cut, however only on save not on show
+    pie_chart.savefig(path)
 
     # plt.show()  # DEBUG
-
-    run_chart.add_picture(path, width=Cm(plt_width), height=Cm(plt_height))
+    pie_height = chart_height
+    run_chart.add_picture(path, height=pie_height)
     os.remove(path)
 
     # ====================
@@ -580,19 +726,21 @@ def export_to_word(vuln_info, template, output_file='openvas_report.docx'):
 
         if level != cur_level:
             document.add_paragraph(
-                level.capitalize(), style='OV-H2toc').paragraph_format.page_break_before = True
+                level.capitalize(), style='OR-Heading_2').paragraph_format.page_break_before = True
             cur_level = level
         else:
             document.add_page_break()
 
         title = "[{}] {}".format(level.upper(), vuln.name)
-        document.add_paragraph(title, style='OV-Finding')
-
+        par = document.add_paragraph(title, style='OR-Vuln_title_'+vuln.level)
+        
         table_vuln = document.add_table(rows=8, cols=3)
         table_vuln.autofit = False
         table_vuln.columns[0].width = Cm(0.35)
         table_vuln.columns[1].width = Cm(2.85)
-        table_vuln.columns[2].width = page_width - table_vuln.columns[0].width - table_vuln.columns[1].width
+        table_vuln.columns[-1].width = page_width
+        for c in range (len(table_vuln.columns)-1):
+            table_vuln.columns[-1].width -= table_vuln.columns[c].width
 
         # COLOR
         # --------------------
@@ -604,14 +752,14 @@ def export_to_word(vuln_info, template, output_file='openvas_report.docx'):
         # TABLE HEADERS
         # --------------------
         hdr_cells = table_vuln.columns[1].cells
-        hdr_cells[0].paragraphs[0].add_run('Description').bold = True
-        hdr_cells[1].paragraphs[0].add_run('Impact').bold = True
-        hdr_cells[2].paragraphs[0].add_run('Recommendation').bold = True
-        hdr_cells[3].paragraphs[0].add_run('Details').bold = True
-        hdr_cells[4].paragraphs[0].add_run('CVSS').bold = True
-        hdr_cells[5].paragraphs[0].add_run('CVEs').bold = True
-        hdr_cells[6].paragraphs[0].add_run('Family').bold = True
-        hdr_cells[7].paragraphs[0].add_run('References').bold = True
+        hdr_cells[0].paragraphs[0].add_run('Description')
+        hdr_cells[1].paragraphs[0].add_run('Impact')
+        hdr_cells[2].paragraphs[0].add_run('Recommendation')
+        hdr_cells[3].paragraphs[0].add_run('Details')
+        hdr_cells[4].paragraphs[0].add_run('CVSS')
+        hdr_cells[5].paragraphs[0].add_run('CVEs')
+        hdr_cells[6].paragraphs[0].add_run('Family')
+        hdr_cells[7].paragraphs[0].add_run('References')
 
         # FIELDS
         # --------------------
@@ -629,27 +777,45 @@ def export_to_word(vuln_info, template, output_file='openvas_report.docx'):
         txt_cells[5].text = cves
         txt_cells[6].text = vuln.family
         txt_cells[7].text = vuln.references
+        for c in txt_cells:
+            for p in c.paragraphs:
+                p.style = doc_styles['OR-cell']
+        
+        # Apply styles
+        # --------------------
+        for h in hdr_cells:
+            for p in h.paragraphs:
+                p.style = doc_styles['OR-cell_bold']
+        
+        for c in txt_cells:
+            for p in c.paragraphs:
+                p.style = doc_styles['OR-cell']
 
         # VULN HOSTS
         # --------------------
-        document.add_paragraph('Vulnerable hosts', style='Heading 4')
+        document.add_paragraph('Vulnerable hosts', style='OR-Vuln_hosts')
 
         # add coloumn for result per port and resize columns
         table_hosts = document.add_table(cols=5, rows=(len(vuln.hosts) + 1))
 
-        table_hosts.columns[0].width = Cm(3.0)
-        table_hosts.columns[1].width = Cm(3.6)
-        table_hosts.columns[2].width = Cm(1.7)
-        table_hosts.columns[3].width = Cm(1.7)
-        table_hosts.columns[4].width = page_width - (table_hosts.columns[0].width + table_hosts.columns[1].width + table_hosts.columns[2].width + table_hosts.columns[3].width)
+        table_hosts.columns[0].width  = Cm(2.8)
+        table_hosts.columns[1].width  = Cm(3.0)
+        table_hosts.columns[2].width  = Cm(2.0)
+        table_hosts.columns[3].width  = Cm(2.0)
+        table_hosts.columns[-1].width = page_width
+        for c in range (len(table_hosts.columns)-1):
+            table_hosts.columns[-1].width -= table_hosts.columns[c].width
         
+        # TABLE HEADERS
+        # --------------------
         hdr_cells = table_hosts.rows[0].cells
-        hdr_cells[0].paragraphs[0].add_run('IP').bold = True
-        hdr_cells[1].paragraphs[0].add_run('Host name').bold = True
-        hdr_cells[2].paragraphs[0].add_run('Port number').bold = True
-        hdr_cells[3].paragraphs[0].add_run('Port protocol').bold = True
-        hdr_cells[4].paragraphs[0].add_run('Port result').bold = True
-
+        hdr_cells[0].paragraphs[0].add_run('IP')
+        hdr_cells[1].paragraphs[0].add_run('Host name')
+        hdr_cells[2].paragraphs[0].add_run('Port number')
+        hdr_cells[3].paragraphs[0].add_run('Port protocol')
+        hdr_cells[4].paragraphs[0].add_run('Port result')
+        # FIELDS
+        # --------------------
         for j, (host, port) in enumerate(vuln.hosts, 1):
             cells = table_hosts.rows[j].cells
             cells[0].text = host.ip
@@ -660,6 +826,16 @@ def export_to_word(vuln_info, template, output_file='openvas_report.docx'):
                 cells[4].text = port.result
             else:
                 cells[2].text = "No port info"
+        
+        # Apply styles
+        # --------------------
+        for h in hdr_cells:
+            for p in h.paragraphs:
+                p.style = doc_styles['OR-cell_bold']
+        for r in table_hosts.rows[1:]:
+            for c in r.cells:
+                for p in c.paragraphs:
+                    p.style = doc_styles['OR-cell']
 
     document.save(output_file)
 
@@ -693,8 +869,9 @@ def export_to_csv(vuln_info, template=None, output_file='openvas_report.csv'):
     else:
         if not output_file:
             raise ValueError("output_file must have a valid name.")
+    # Make a warning, not an error
     if template is not None:
-        raise NotImplementedError("Use of template is not supported in CSV-output.")
+        print("WARNING: Use of template is not supported in CSV-output.", file=sys.stderr)
 
     vuln_info, _, _, _ = _get_collections(vuln_info)
 
