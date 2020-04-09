@@ -397,6 +397,7 @@ def export_to_word(vuln_info, template, output_file='openvas_report.docx'):
     from docx.oxml.ns import nsdecls
     from docx.oxml import parse_xml
     from docx.shared import Cm
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
 
     if not isinstance(vuln_info, list):
         raise TypeError("Expected list, got '{}' instead".format(type(vuln_info)))
@@ -421,6 +422,7 @@ def export_to_word(vuln_info, template, output_file='openvas_report.docx'):
     # DOCUMENT PROPERTIES
     # ====================
     document = Document(template)
+    page_width = Cm(16.5)
 
     doc_prop = document.core_properties
     doc_prop.title = "OpenVAS Report"
@@ -504,9 +506,12 @@ def export_to_word(vuln_info, template, output_file='openvas_report.docx'):
     fd, path = tempfile.mkstemp(suffix='.png')
 
     par_chart = document.add_paragraph()
+    par_chart.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run_chart = par_chart.add_run()
 
-    plt.figure()
+    plt_width  = 10.0 # cm
+    plt_height = 7.5  # cm
+    plt.figure(figsize=[ plt_width, plt_height ], dpi=300)
 
     pos = np.arange(len(labels_sum))
     width = 0.35
@@ -530,7 +535,7 @@ def export_to_word(vuln_info, template, output_file='openvas_report.docx'):
         for bar in barcontainer:
             height = bar.get_height()
             plt.gca().text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.3, str(int(height)),
-                           ha='center', color='black', fontsize=9)
+                           ha='center', color='black', fontsize=8)
 
     __label_bars(bars_vuln)
     __label_bars(bars_aff)
@@ -541,10 +546,12 @@ def export_to_word(vuln_info, template, output_file='openvas_report.docx'):
 
     # plt.show()  # DEBUG
 
-    run_chart.add_picture(path, width=Cm(8.0))
+    run_chart.add_picture(path, width=Cm(plt_width), height=Cm(plt_height))
     os.remove(path)
 
-    plt.figure()
+    plt_width  = 14.0 # cm
+    plt_height = 7.0  # cm
+    plt.figure(figsize=[ plt_width, plt_height ], dpi=300)
 
     values = list(vuln_by_family.values())
     pie, tx, autotexts = plt.pie(values, labels=vuln_by_family.keys(), autopct='')
@@ -557,7 +564,7 @@ def export_to_word(vuln_info, template, output_file='openvas_report.docx'):
 
     # plt.show()  # DEBUG
 
-    run_chart.add_picture(path, width=Cm(8.0))
+    run_chart.add_picture(path, width=Cm(plt_width), height=Cm(plt_height))
     os.remove(path)
 
     # ====================
@@ -583,6 +590,9 @@ def export_to_word(vuln_info, template, output_file='openvas_report.docx'):
 
         table_vuln = document.add_table(rows=8, cols=3)
         table_vuln.autofit = False
+        table_vuln.columns[0].width = Cm(0.35)
+        table_vuln.columns[1].width = Cm(2.85)
+        table_vuln.columns[2].width = page_width - table_vuln.columns[0].width - table_vuln.columns[1].width
 
         # COLOR
         # --------------------
@@ -590,9 +600,6 @@ def export_to_word(vuln_info, template, output_file='openvas_report.docx'):
         col_cells[0].merge(col_cells[7])
         color_fill = parse_xml(r'<w:shd {} w:fill="{}"/>'.format(nsdecls('w'), Config.colors()[vuln.level][1:]))
         col_cells[0]._tc.get_or_add_tcPr().append(color_fill)
-
-        for col_cell in col_cells:
-            col_cell.width = Cm(0.42)
 
         # TABLE HEADERS
         # --------------------
@@ -605,9 +612,6 @@ def export_to_word(vuln_info, template, output_file='openvas_report.docx'):
         hdr_cells[5].paragraphs[0].add_run('CVEs').bold = True
         hdr_cells[6].paragraphs[0].add_run('Family').bold = True
         hdr_cells[7].paragraphs[0].add_run('References').bold = True
-
-        for hdr_cell in hdr_cells:
-            hdr_cell.width = Cm(3.58)
 
         # FIELDS
         # --------------------
@@ -626,9 +630,6 @@ def export_to_word(vuln_info, template, output_file='openvas_report.docx'):
         txt_cells[6].text = vuln.family
         txt_cells[7].text = vuln.references
 
-        for txt_cell in txt_cells:
-            txt_cell.width = Cm(12.50)
-
         # VULN HOSTS
         # --------------------
         document.add_paragraph('Vulnerable hosts', style='Heading 4')
@@ -636,26 +637,12 @@ def export_to_word(vuln_info, template, output_file='openvas_report.docx'):
         # add coloumn for result per port and resize columns
         table_hosts = document.add_table(cols=5, rows=(len(vuln.hosts) + 1))
 
-        col_cells = table_hosts.columns[1].cells
-        for col_cell in col_cells:
-            col_cell.width = Cm(3.2)
-
-        col_cells = table_hosts.columns[2].cells
-        for col_cell in col_cells:
-            col_cell.width = Cm(3.2)
-
-        col_cells = table_hosts.columns[2].cells
-        for col_cell in col_cells:
-            col_cell.width = Cm(1.6)
-
-        col_cells = table_hosts.columns[3].cells
-        for col_cell in col_cells:
-            col_cell.width = Cm(1.6)
-
-        col_cells = table_hosts.columns[4].cells
-        for col_cell in col_cells:
-            col_cell.width = Cm(6.4)
-
+        table_hosts.columns[0].width = Cm(3.0)
+        table_hosts.columns[1].width = Cm(3.6)
+        table_hosts.columns[2].width = Cm(1.7)
+        table_hosts.columns[3].width = Cm(1.7)
+        table_hosts.columns[4].width = page_width - (table_hosts.columns[0].width + table_hosts.columns[1].width + table_hosts.columns[2].width + table_hosts.columns[3].width)
+        
         hdr_cells = table_hosts.rows[0].cells
         hdr_cells[0].paragraphs[0].add_run('IP').bold = True
         hdr_cells[1].paragraphs[0].add_run('Host name').bold = True
