@@ -20,9 +20,9 @@ def main():
     parser.add_argument("-i", "--input", nargs="*", dest="input_files", help="OpenVAS XML reports", required=True)
     parser.add_argument("-o", "--output", dest="output_file", help="Output file, no extension", required=False,
                         default="openvas_report")
-    parser.add_argument("-l", "--level", dest="min_lvl", help="Minimal level (c, h, m, l, n)", required=False,
+    parser.add_argument("-l", "--level", dest="min_lvl", help="Minimal level (c, h, m, l, n*)", required=False,
                         default="none")
-    parser.add_argument("-f", "--format", dest="filetype", help="Output format (xlsx)", required=False, default="xlsx")
+    parser.add_argument("-f", "--format", dest="filetype", help="Output format (xlsx*, csv, docx)", required=False, default="xlsx")
     parser.add_argument("-t", "--template", dest="template", help="Template file for docx export", required=False,
                         default=None)
 
@@ -62,11 +62,7 @@ def create_config(input_files, output_file="openvas_report", min_lvl="none", fil
 
     check_filetype(filetype)
 
-    if template is not None:
-        return Config(input_files, output_file, min_lvl, filetype, template)
-    else:
-        return Config(input_files, output_file, min_lvl, filetype)
-
+    return Config(input_files, output_file, min_lvl, filetype, template)
 
 def convert(config):
     """
@@ -81,8 +77,8 @@ def convert(config):
         raise TypeError("Expected Config, got '{}' instead".format(type(config)))
 
     if config.filetype not in exporters().keys():
-        raise NotImplementedError("Filetype not supported, got {}, expecting one of {}".format(config.filetype,
-                                                                                               exporters().keys()))
+        raise NotImplementedError("Filetype not supported, got {}, expecting one of {}".format(
+            config.filetype, exporters().keys()))
 
     openvas_info = openvas_parser(config.input_files, config.min_level)
 
@@ -115,5 +111,5 @@ def check_filetype(filetype):
     :raises: ValueError
     """
     if filetype not in exporters().keys():
-        raise ValueError("Filetype not supported, got {}, expecting one of {}".format(filetype,
-                                                                                      exporters().keys()))
+        raise ValueError("Filetype not supported, got {}, expecting one of {}".format(
+            filetype, exporters().keys()))
