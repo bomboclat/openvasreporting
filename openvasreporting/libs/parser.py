@@ -22,6 +22,12 @@ try:
 except ImportError:
     from xml.etree import ElementTree as Et
 
+def find_text(element, pattern, default_val=''):
+    res = element.find(pattern)
+    if 'text' not in dir(res):
+        logging.info("WARNING: text not found in the '{}' tag".format(pattern))
+        return default_val
+    return res.text
 
 def openvas_parser(input_files, min_level=Config.levels()["n"]):
     """
@@ -68,7 +74,7 @@ def openvas_parser(input_files, min_level=Config.levels()["n"]):
             # --------------------
             #
             # VULN_NAME
-            vuln_name = nvt_tmp.find("./name").text
+            vuln_name = find_text(nvt_tmp, "./name")
 
             logging.debug("--------------------------------------------------------------------------------")
             logging.debug("- {}".format(vuln_name))  # DEBUG
@@ -86,9 +92,7 @@ def openvas_parser(input_files, min_level=Config.levels()["n"]):
             # --------------------
             #
             # VULN_CVSS
-            vuln_cvss = vuln.find("./severity").text
-            if vuln_cvss is None:
-                vuln_cvss = 0.0
+            vuln_cvss = find_text(vuln, "./severity", 0.0)
             vuln_cvss = float(vuln_cvss)
             logging.debug("* vuln_cvss:\t{}".format(vuln_cvss))  # DEBUG
 
@@ -110,13 +114,13 @@ def openvas_parser(input_files, min_level=Config.levels()["n"]):
             # --------------------
             #
             # VULN_HOST
-            vuln_host = vuln.find("./host").text
+            vuln_host = find_text(vuln, "./host")
             vuln_hostname = '-'
-            if vuln.find("./host/hostname").text:
-                vuln_hostname = vuln.find("./host/hostname").text
+            if find_text(vuln, "./host/hostname"):
+                vuln_hostname = find_text(vuln, "./host/hostname")
             elif 'vuln_hostname' in globals():
                 del vuln_hostname
-            vuln_port = vuln.find("./port").text
+            vuln_port = find_text(vuln, "./port")
             if vuln_hostname:
                 logging.debug("* vuln_host:\t{} hostname:\t{} port:\t{}".format(vuln_host, vuln_hostname, vuln_port))  # DEBUG
             else:
@@ -126,18 +130,17 @@ def openvas_parser(input_files, min_level=Config.levels()["n"]):
             #
             # VULN_TAGS
             # Replace double newlines by a single newline
-            vuln_tags_text = re.sub(r"(\r\n)+", "\r\n", nvt_tmp.find("./tags").text)
+            vuln_tags_text = re.sub(r"(\r\n)+", "\r\n", find_text(nvt_tmp, "./tags"))
             vuln_tags_text = re.sub(r"\n+", "\n", vuln_tags_text)
             # Remove useless whitespace but not newlines
             vuln_tags_text = re.sub(r"[^\S\r\n]+", " ", vuln_tags_text)
-            vuln_tags_temp = vuln_tags_text.split('|')
-            vuln_tags = dict(tag.split('=', 1) for tag in vuln_tags_temp)
+            vuln_tags = dict(tag.split('=', 1) for tag in vuln_tags_text.split('|'))
             logging.debug("* vuln_tags:\t{}".format(vuln_tags))  # DEBUG
 
             # --------------------
             #
             # VULN_THREAT
-            vuln_threat = vuln.find("./threat").text
+            vuln_threat = find_text(vuln, "./threat")
             if vuln_threat is None:
                 vuln_threat = Config.levels()["n"]
             else:
@@ -148,14 +151,14 @@ def openvas_parser(input_files, min_level=Config.levels()["n"]):
             # --------------------
             #
             # VULN_FAMILY
-            vuln_family = nvt_tmp.find("./family").text
+            vuln_family = find_text(nvt_tmp, "./family")
 
             logging.debug("* vuln_family:\t{}".format(vuln_family))  # DEBUG
 
             # --------------------
             #
             # VULN_CVES
-            vuln_cves = nvt_tmp.find("./cve").text
+            vuln_cves = find_text(nvt_tmp, "./cve", [])
             if vuln_cves:
                 if vuln_cves.lower() == "nocve":
                     vuln_cves = []
@@ -167,7 +170,7 @@ def openvas_parser(input_files, min_level=Config.levels()["n"]):
             # --------------------
             #
             # VULN_REFERENCES
-            vuln_references = nvt_tmp.find("./xref").text
+            vuln_references = find_text(nvt_tmp, "./xref", [])
             if vuln_references:
                 if vuln_references.lower() == "noxref":
                     vuln_references = []
@@ -184,7 +187,7 @@ def openvas_parser(input_files, min_level=Config.levels()["n"]):
             # VULN_DESCRIPTION
             test=vuln.find("./description")
             if test is not None:
-                vuln_result = vuln.find("./description").text
+                vuln_result = find_text(vuln, "./description")
             
             if test is None or vuln_result is None:
                 vuln_result = []
